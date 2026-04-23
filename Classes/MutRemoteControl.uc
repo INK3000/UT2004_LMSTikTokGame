@@ -1,12 +1,3 @@
-// ============================================================
-//  MutRemoteControl.uc
-//  Пакет: LMSGameTikTok
-//
-//  UDP мутатор адаптированный под LMSGame:
-//    - Все спавны ботов → Team 1
-//    - One-time логика убрана — LMSGame.RestartPlayer блокирует respawn
-//    - Добавлена команда: setteam <0|1>
-// ============================================================
 class MutRemoteControl extends Mutator;
 
 var RemoteUdpLink Udp;
@@ -17,7 +8,7 @@ function PostBeginPlay()
 
     Log("[MRC] PostBeginPlay");
 
-    Udp = Spawn(class'LMSGameTikTok.RemoteUdpLink');
+    Udp = Spawn(class'RemoteUdpLink');
     if (Udp != None)
     {
         Log("[MRC] RemoteUdpLink spawned");
@@ -30,96 +21,90 @@ function PostBeginPlay()
     }
 }
 
-// После спавна бота — назначаем его в Team 1
-function AssignBotToEnemyTeam(Bot B)
-{
-    local LMSGame G;
-
-    if (B == None || B.PlayerReplicationInfo == None)
-        return;
-
-    G = LMSGame(Level.Game);
-    if (G != None)
-    {
-        G.ChangeTeam(B, 1, false);
-        Log("[MRC] Bot assigned to Team 1: " $ B.PlayerReplicationInfo.PlayerName);
-    }
-    else
-    {
-        Log("[MRC] AssignBotToEnemyTeam: LMSGame not found");
-    }
-}
-
-function Bot FindNewestBot(optional string PreferredName)
-{
-    local Controller C;
-    local Bot B;
-    local Bot BestMatch;
-    local Bot BestAny;
-
-    for (C = Level.ControllerList; C != None; C = C.NextController)
-    {
-        B = Bot(C);
-        if (B != None && B.PlayerReplicationInfo != None)
-        {
-            if (BestAny == None || B.PlayerReplicationInfo.PlayerID > BestAny.PlayerReplicationInfo.PlayerID)
-                BestAny = B;
-
-            if (PreferredName != "" && (B.PlayerReplicationInfo.PlayerName ~= PreferredName))
-                if (BestMatch == None || B.PlayerReplicationInfo.PlayerID > BestMatch.PlayerReplicationInfo.PlayerID)
-                    BestMatch = B;
-        }
-    }
-
-    if (BestMatch != None)
-        return BestMatch;
-
-    return BestAny;
-}
-
 function PlayerController GetLocalPlayerController()
 {
     local PlayerController PC;
 
     foreach DynamicActors(class'PlayerController', PC)
+    {
         return PC;
+    }
 
     return None;
+}
+
+function bool IsTeamGame()
+{
+    return xTeamGame(Level.Game) != None;
+}
+
+function bool IsInvasionGame()
+{
+    return Invasion(Level.Game) != None;
+}
+
+function bool IsDeathMatchBasedGame()
+{
+    return DeathMatch(Level.Game) != None;
 }
 
 function string TrimSpaces(string S)
 {
     while (Len(S) > 0 && Left(S, 1) == " ")
+    {
         S = Mid(S, 1);
+    }
+
     while (Len(S) > 0 && Right(S, 1) == " ")
+    {
         S = Left(S, Len(S) - 1);
+    }
+
     return S;
 }
 
 function string GetCommandName(string FullCmd)
 {
     local int SpacePos;
+
     FullCmd = TrimSpaces(FullCmd);
     SpacePos = InStr(FullCmd, " ");
-    if (SpacePos == -1) return FullCmd;
+
+    if (SpacePos == -1)
+    {
+        return FullCmd;
+    }
+
     return Left(FullCmd, SpacePos);
 }
 
 function string GetCommandArg(string FullCmd)
 {
     local int SpacePos;
+
     FullCmd = TrimSpaces(FullCmd);
     SpacePos = InStr(FullCmd, " ");
-    if (SpacePos == -1) return "";
+
+    if (SpacePos == -1)
+    {
+        return "";
+    }
+
     return TrimSpaces(Mid(FullCmd, SpacePos + 1));
 }
 
 function string GetFirstWord(string S)
 {
     local int SpacePos;
+
     S = TrimSpaces(S);
     SpacePos = InStr(S, " ");
-    if (SpacePos == -1) return S;
+
+    if (SpacePos == -1)
+    {
+        return S;
+    }
+
     return Left(S, SpacePos);
 }
 
@@ -131,23 +116,63 @@ function string GetSecondArg(string FullCmd)
 
     FullCmd = TrimSpaces(FullCmd);
     FirstSpacePos = InStr(FullCmd, " ");
-    if (FirstSpacePos == -1) return "";
+
+    if (FirstSpacePos == -1)
+    {
+        return "";
+    }
 
     Rest = TrimSpaces(Mid(FullCmd, FirstSpacePos + 1));
     SecondSpacePos = InStr(Rest, " ");
-    if (SecondSpacePos == -1) return "";
+
+    if (SecondSpacePos == -1)
+    {
+        return "";
+    }
 
     return TrimSpaces(Mid(Rest, SecondSpacePos + 1));
+}
+
+function int ParseSkillOrDefault(string S, int DefaultSkill)
+{
+    local int Parsed;
+
+    if (S == "")
+    {
+        return DefaultSkill;
+    }
+
+    Parsed = int(S);
+
+    if (Parsed < 0)
+    {
+        return 0;
+    }
+
+    if (Parsed > 7)
+    {
+        return 7;
+    }
+
+    return Parsed;
 }
 
 function ApplyBoostToPlayer(PlayerController PC)
 {
     local xPawn P;
 
-    if (PC == None || PC.Pawn == None) { Log("[MRC] ApplyBoostToPlayer: no pawn"); return; }
+    if (PC == None || PC.Pawn == None)
+    {
+        Log("[MRC] ApplyBoostToPlayer: no player pawn");
+        return;
+    }
 
     P = xPawn(PC.Pawn);
-    if (P == None) { Log("[MRC] ApplyBoostToPlayer: not xPawn"); return; }
+    if (P == None)
+    {
+        Log("[MRC] ApplyBoostToPlayer: pawn is not xPawn");
+        return;
+    }
 
     P.Health = 300;
     P.HealthMax = 300;
@@ -156,7 +181,7 @@ function ApplyBoostToPlayer(PlayerController PC)
     P.MultiJumpBoost = 100.0;
 
     PC.ClientMessage("Boost applied.");
-    Log("[MRC] Boost applied");
+    Log("[MRC] Boost applied to local player");
 }
 
 function StripWeaponsFromPlayer(PlayerController PC)
@@ -165,25 +190,40 @@ function StripWeaponsFromPlayer(PlayerController PC)
     local Inventory NextInv;
     local Weapon W;
 
-    if (PC == None || PC.Pawn == None) { Log("[MRC] StripWeaponsFromPlayer: no pawn"); return; }
+    if (PC == None || PC.Pawn == None)
+    {
+        Log("[MRC] StripWeaponsFromPlayer: no player pawn");
+        return;
+    }
 
     Inv = PC.Pawn.Inventory;
     while (Inv != None)
     {
         NextInv = Inv.Inventory;
-        if (Weapon(Inv) != None) { PC.Pawn.DeleteInventory(Inv); Inv.Destroy(); }
+
+        if (Weapon(Inv) != None)
+        {
+            PC.Pawn.DeleteInventory(Inv);
+            Inv.Destroy();
+        }
+
         Inv = NextInv;
     }
 
     PC.Pawn.Weapon = None;
     PC.Pawn.PendingWeapon = None;
+
     PC.Pawn.GiveWeapon("XWeapons.ShieldGun");
 
     W = Weapon(PC.Pawn.FindInventoryType(class'ShieldGun'));
-    if (W != None) PC.Pawn.Weapon = W;
+    if (W != None)
+    {
+        PC.Pawn.Weapon = W;
+    }
 
-    PC.ClientMessage("Weapons stripped. ShieldGun equipped.");
-    Log("[MRC] Weapons stripped from player");
+    PC.ClientMessage("All weapons removed. ShieldGun equipped.");
+    Log("[MRC] Weapons stripped from local player");
+    Log("[MRC] ShieldGun was equipped to local player");
 }
 
 function StripWeaponsFromAllPawns()
@@ -197,154 +237,267 @@ function StripWeaponsFromAllPawns()
         if (C.Pawn != None)
         {
             Inv = C.Pawn.Inventory;
+
             while (Inv != None)
             {
                 NextInv = Inv.Inventory;
-                if (Weapon(Inv) != None) { C.Pawn.DeleteInventory(Inv); Inv.Destroy(); }
+
+                if (Weapon(Inv) != None)
+                {
+                    C.Pawn.DeleteInventory(Inv);
+                    Inv.Destroy();
+                }
+
                 Inv = NextInv;
             }
+
             C.Pawn.Weapon = None;
             C.Pawn.PendingWeapon = None;
         }
     }
+
     Log("[MRC] Weapons stripped from all pawns");
 }
 
-function AddGenericBot(PlayerController PC)
+// addbot             -> skill 1
+// addbot 0           -> Novice
+// addbot 7           -> Godlike
+function AddGenericBot(PlayerController PC, optional int SkillLevel)
 {
-    local LMSGame G;
-    local Bot NewBot;
+    local LMSGame TTG;
+    local DeathMatch DM;
 
-    G = LMSGame(Level.Game);
-    if (G == None) { if (PC != None) PC.ClientMessage("LMSGame not found."); return; }
+    TTG = LMSGame(Level.Game);
+    if (TTG != None)
+    {
+        TTG.AddViewerBot(SkillLevel);
 
-    G.AddBot();
-    NewBot = FindNewestBot();
-    if (NewBot != None) AssignBotToEnemyTeam(NewBot);
+        if (PC != None)
+        {
+            PC.ClientMessage("Viewer bot added. Skill=" $ SkillLevel);
+        }
 
-    if (PC != None) PC.ClientMessage("Bot added to Team 1.");
-    Log("[MRC] Generic bot added");
+        Log("[MRC] Viewer bot added via LMSGame. Skill=" $ SkillLevel);
+        return;
+    }
+
+    DM = DeathMatch(Level.Game);
+    if (DM == None)
+    {
+        if (PC != None)
+        {
+            PC.ClientMessage("Current game does not support stock AddBot.");
+        }
+
+        Log("[MRC] AddGenericBot: DeathMatch(Level.Game) is None");
+        return;
+    }
+
+    DM.AddBot();
+
+    if (PC != None)
+    {
+        PC.ClientMessage("Bot added. Fallback mode does not set per-bot skill.");
+    }
+
+    Log("[MRC] Generic bot added via DeathMatch fallback");
 }
 
-function AddNamedStockBot(string BotName, PlayerController PC)
+// addnamedbot Gorge      -> skill 1
+// addnamedbot Gorge 5    -> Masterful
+function AddNamedStockBot(string BotName, PlayerController PC, optional int SkillLevel)
 {
-    local LMSGame G;
-    local Bot NewBot;
+    local LMSGame TTG;
+    local DeathMatch DM;
 
-    G = LMSGame(Level.Game);
-    if (G == None) { if (PC != None) PC.ClientMessage("LMSGame not found."); return; }
-    if (BotName == "") { if (PC != None) PC.ClientMessage("Usage: addnamedbot <name>"); return; }
+    if (BotName == "")
+    {
+        if (PC != None)
+        {
+            PC.ClientMessage("Usage: addnamedbot <stock bot name> [skill 0..7]");
+        }
 
-    G.AddNamedBot(BotName);
-    NewBot = FindNewestBot(BotName);
-    if (NewBot != None) AssignBotToEnemyTeam(NewBot);
+        Log("[MRC] AddNamedStockBot: empty bot name");
+        return;
+    }
 
-    if (PC != None) PC.ClientMessage("Named bot added: " $ BotName);
-    Log("[MRC] Named bot added: " $ BotName);
+    TTG = LMSGame(Level.Game);
+    if (TTG != None)
+    {
+        TTG.AddNamedViewerBot(BotName, SkillLevel);
+
+        if (PC != None)
+        {
+            PC.ClientMessage("Named viewer bot requested: " $ BotName $ " Skill=" $ SkillLevel);
+        }
+
+        Log("[MRC] Named viewer bot requested via LMSGame: " $ BotName $ " Skill=" $ SkillLevel);
+        return;
+    }
+
+    DM = DeathMatch(Level.Game);
+    if (DM == None)
+    {
+        if (PC != None)
+        {
+            PC.ClientMessage("Current game does not support stock AddNamedBot.");
+        }
+
+        Log("[MRC] AddNamedStockBot: DeathMatch(Level.Game) is None");
+        return;
+    }
+
+    DM.AddNamedBot(BotName);
+
+    if (PC != None)
+    {
+        PC.ClientMessage("Named bot requested. Fallback mode does not set per-bot skill.");
+    }
+
+    Log("[MRC] Named bot requested via DeathMatch fallback: " $ BotName);
 }
 
-function AddNamedBotWithCustomName(string BotName, string CustomName, PlayerController PC)
+function AddNamedBotWithCustomName(string BotName, string CustomName, PlayerController PC, optional int SkillLevel)
 {
-    local LMSGame G;
+    local LMSGame TTG;
+    local DeathMatch DM;
     local Controller C;
     local Bot B;
 
-    G = LMSGame(Level.Game);
-    if (G == None) { if (PC != None) PC.ClientMessage("LMSGame not found."); return; }
-    if (BotName == "" || CustomName == "") { if (PC != None) PC.ClientMessage("Usage: addnamedbotcustom <stock> <custom>"); return; }
+    if (BotName == "" || CustomName == "")
+    {
+        if (PC != None)
+        {
+            PC.ClientMessage("Usage: addnamedbotcustom <stock bot name> <custom name> [skill 0..7]");
+        }
 
-    G.AddNamedBot(BotName);
+        Log("[MRC] AddNamedBotWithCustomName: missing arguments");
+        return;
+    }
+
+    TTG = LMSGame(Level.Game);
+    if (TTG != None)
+    {
+        TTG.AddNamedViewerBotWithCustomName(BotName, CustomName, SkillLevel);
+
+        if (PC != None)
+        {
+            PC.ClientMessage("Viewer bot added: " $ BotName $ " -> " $ CustomName $ " Skill=" $ SkillLevel);
+        }
+
+        Log("[MRC] Viewer bot added and renamed via LMSGame: " $ BotName $ " -> " $ CustomName $ " Skill=" $ SkillLevel);
+        return;
+    }
+
+    DM = DeathMatch(Level.Game);
+    if (DM == None)
+    {
+        if (PC != None)
+        {
+            PC.ClientMessage("Current game does not support stock AddNamedBot.");
+        }
+
+        Log("[MRC] AddNamedBotWithCustomName: DeathMatch(Level.Game) is None");
+        return;
+    }
+
+    DM.AddNamedBot(BotName);
 
     for (C = Level.ControllerList; C != None; C = C.NextController)
     {
         B = Bot(C);
-        if (B != None && B.PlayerReplicationInfo != None &&
-            (B.PlayerReplicationInfo.PlayerName ~= BotName))
+        if (B != None && B.PlayerReplicationInfo != None)
         {
-            B.PlayerReplicationInfo.SetPlayerName(CustomName);
-            AssignBotToEnemyTeam(B);
-            if (PC != None) PC.ClientMessage("Bot: " $ BotName $ " -> " $ CustomName);
-            Log("[MRC] Bot renamed: " $ BotName $ " -> " $ CustomName);
-            return;
+            if (B.PlayerReplicationInfo.PlayerName ~= BotName)
+            {
+                B.PlayerReplicationInfo.SetPlayerName(CustomName);
+
+                if (PC != None)
+                {
+                    PC.ClientMessage("Bot added: " $ BotName $ " -> " $ CustomName);
+                }
+
+                Log("[MRC] Named bot added and renamed via fallback: " $ BotName $ " -> " $ CustomName);
+                return;
+            }
         }
     }
 
-    if (PC != None) PC.ClientMessage("Bot added, rename target not found.");
-    Log("[MRC] rename target not found for " $ BotName);
+    if (PC != None)
+    {
+        PC.ClientMessage("Bot added, but rename target was not found.");
+    }
+
+    Log("[MRC] AddNamedBotWithCustomName: rename target not found for " $ BotName);
 }
 
-function AddOneTimeBot(string BotName, PlayerController PC)
+function AddOneTimeBot(string BotName, PlayerController PC, optional int SkillLevel)
 {
-    local LMSGame G;
-    local Bot NewBot;
-
-    G = LMSGame(Level.Game);
-    if (G == None) { if (PC != None) PC.ClientMessage("LMSGame not found."); return; }
-
     if (BotName == "")
     {
-        G.AddBot();
-        NewBot = FindNewestBot();
-    }
-    else
-    {
-        G.AddNamedBot(BotName);
-        NewBot = FindNewestBot(BotName);
-    }
-
-    if (NewBot == None || NewBot.PlayerReplicationInfo == None)
-    {
-        if (PC != None) PC.ClientMessage("One-time bot spawn failed.");
-        Log("[MRC] AddOneTimeBot: bot not found after spawn");
+        AddGenericBot(PC, SkillLevel);
         return;
     }
 
-    AssignBotToEnemyTeam(NewBot);
-
-    if (PC != None) PC.ClientMessage("One-time bot spawned: " $ NewBot.PlayerReplicationInfo.PlayerName);
-    Log("[MRC] One-time bot spawned: " $ NewBot.PlayerReplicationInfo.PlayerName);
+    AddNamedStockBot(BotName, PC, SkillLevel);
 }
 
 function SetMyName(PlayerController PC, string NewName)
 {
-    if (PC == None || PC.PlayerReplicationInfo == None) return;
-    if (NewName == "") { PC.ClientMessage("Usage: setmyname <name>"); return; }
+    if (PC == None || PC.PlayerReplicationInfo == None)
+    {
+        Log("[MRC] SetMyName: no PlayerReplicationInfo");
+        return;
+    }
+
+    if (NewName == "")
+    {
+        PC.ClientMessage("Usage: setmyname <new name>");
+        return;
+    }
 
     PC.PlayerReplicationInfo.SetPlayerName(NewName);
-    PC.ClientMessage("Name set to: " $ NewName);
-    Log("[MRC] Player name: " $ NewName);
-}
-
-function SetMyTeam(PlayerController PC, string TeamIndexStr)
-{
-    local LMSGame G;
-    local int TeamIndex;
-
-    G = LMSGame(Level.Game);
-    if (G == None) { if (PC != None) PC.ClientMessage("LMSGame not found."); return; }
-
-    TeamIndex = int(TeamIndexStr);
-    if (TeamIndex != 0 && TeamIndex != 1) { if (PC != None) PC.ClientMessage("Usage: setteam <0|1>"); return; }
-
-    G.ChangeTeam(PC, TeamIndex, false);
-    if (PC != None) PC.ClientMessage("Team set to " $ TeamIndex);
-    Log("[MRC] Player team set to " $ TeamIndex);
+    PC.ClientMessage("Your name is now: " $ NewName);
+    Log("[MRC] Local player name changed to: " $ NewName);
 }
 
 function ShowStatus(PlayerController PC)
 {
     local string Msg;
-    local LMSGame G;
+    local LMSGame TTG;
 
-    G = LMSGame(Level.Game);
-    Msg = "GameClass=" $ String(Level.Game.Class);
-
-    if (G != None)
-        Msg = Msg $ " | Mode=LMSGame | HumanKills=" $ G.HumanKills;
+    TTG = LMSGame(Level.Game);
+    if (TTG != None)
+    {
+        Msg = TTG.GetTikTokMatchStatus();
+    }
     else
-        Msg = Msg $ " | LMSGame not found";
+    {
+        Msg = "GameClass=" $ String(Level.Game.Class);
 
-    if (PC != None) PC.ClientMessage(Msg);
+        if (IsInvasionGame())
+        {
+            Msg = Msg $ " | Mode=Invasion";
+        }
+        else if (IsTeamGame())
+        {
+            Msg = Msg $ " | Mode=TeamGame";
+        }
+        else if (IsDeathMatchBasedGame())
+        {
+            Msg = Msg $ " | Mode=DeathMatchBased";
+        }
+        else
+        {
+            Msg = Msg $ " | Mode=Other";
+        }
+    }
+
+    if (PC != None)
+    {
+        PC.ClientMessage(Msg);
+    }
+
     Log("[MRC] " $ Msg);
 }
 
@@ -353,32 +506,102 @@ function ExecuteExternalCommand(string FullCmd, PlayerController PC)
     local string Cmd;
     local string Arg;
     local string Arg2;
+    local string StockBotName;
+    local string CustomBotName;
+    local string SkillArg;
+    local int SkillLevel;
 
     FullCmd = TrimSpaces(FullCmd);
-    Cmd     = GetCommandName(FullCmd);
-    Arg     = GetCommandArg(FullCmd);
-    Arg2    = GetSecondArg(FullCmd);
+    Cmd = GetCommandName(FullCmd);
+    Arg = GetCommandArg(FullCmd);
+    Arg2 = GetSecondArg(FullCmd);
 
-    Log("[MRC] Cmd='" $ Cmd $ "' Arg='" $ Arg $ "'");
+    Log("[MRC] ExecuteExternalCommand: Full='" $ FullCmd $ "' Cmd='" $ Cmd $ "' Arg='" $ Arg $ "'");
 
-    if (Cmd ~= "boost")             { ApplyBoostToPlayer(PC);                                      return; }
-    if (Cmd ~= "stripme")           { StripWeaponsFromPlayer(PC);                                  return; }
-    if (Cmd ~= "stripall")          { StripWeaponsFromAllPawns();                                  return; }
-    if (Cmd ~= "addbot")            { AddGenericBot(PC);                                           return; }
-    if (Cmd ~= "addnamedbot")       { AddNamedStockBot(Arg, PC);                                   return; }
-    if (Cmd ~= "addnamedbotcustom") { AddNamedBotWithCustomName(GetFirstWord(Arg), Arg2, PC);      return; }
-    if (Cmd ~= "onetimebot")        { AddOneTimeBot(Arg, PC);                                      return; }
-    if (Cmd ~= "setmyname")         { SetMyName(PC, Arg);                                          return; }
-    if (Cmd ~= "setteam")           { SetMyTeam(PC, Arg);                                          return; }
-    if (Cmd ~= "status")            { ShowStatus(PC);                                              return; }
+    if (Cmd ~= "boost")
+    {
+        ApplyBoostToPlayer(PC);
+        return;
+    }
 
-    if (PC != None) PC.ClientMessage("Unknown command: " $ FullCmd);
+    if (Cmd ~= "stripme")
+    {
+        StripWeaponsFromPlayer(PC);
+        return;
+    }
+
+    if (Cmd ~= "stripall")
+    {
+        StripWeaponsFromAllPawns();
+        return;
+    }
+
+    if (Cmd ~= "addbot")
+    {
+        SkillLevel = ParseSkillOrDefault(Arg, 1);
+        AddGenericBot(PC, SkillLevel);
+        return;
+    }
+
+    if (Cmd ~= "addnamedbot")
+    {
+        StockBotName = GetFirstWord(Arg);
+        SkillArg = GetSecondArg(FullCmd);
+        SkillLevel = ParseSkillOrDefault(SkillArg, 1);
+
+        AddNamedStockBot(StockBotName, PC, SkillLevel);
+        return;
+    }
+
+    if (Cmd ~= "addnamedbotcustom")
+    {
+        StockBotName = GetFirstWord(Arg);
+        CustomBotName = Arg2;
+        SkillLevel = ParseSkillOrDefault(GetSecondArg(Arg), 1);
+
+        AddNamedBotWithCustomName(StockBotName, CustomBotName, PC, SkillLevel);
+        return;
+    }
+
+    if (Cmd ~= "onetimebot")
+    {
+        if (Arg == "")
+        {
+            SkillLevel = 1;
+        }
+        else
+        {
+            SkillLevel = ParseSkillOrDefault(GetSecondArg(FullCmd), 1);
+        }
+
+        StockBotName = GetFirstWord(Arg);
+        AddOneTimeBot(StockBotName, PC, SkillLevel);
+        return;
+    }
+
+    if (Cmd ~= "setmyname")
+    {
+        SetMyName(PC, Arg);
+        return;
+    }
+
+    if (Cmd ~= "status")
+    {
+        ShowStatus(PC);
+        return;
+    }
+
+    if (PC != None)
+    {
+        PC.ClientMessage("Unknown command: " $ FullCmd);
+    }
+
     Log("[MRC] Unknown command: " $ FullCmd);
 }
 
 function Mutate(string MutateString, PlayerController Sender)
 {
-    Log("[MRC] Mutate: " $ MutateString);
+    Log("[MRC] Mutate called: " $ MutateString);
     ExecuteExternalCommand(MutateString, Sender);
     Super.Mutate(MutateString, Sender);
 }
@@ -386,7 +609,6 @@ function Mutate(string MutateString, PlayerController Sender)
 defaultproperties
 {
     GroupName="StreamControl"
-    FriendlyName="Remote Control (UDP) — LMS"
-    Description="Control LMSGame via UDP commands"
+    FriendlyName="05_Remote Control (UDP)"
+    Description="Control game via UDP commands"
 }
-

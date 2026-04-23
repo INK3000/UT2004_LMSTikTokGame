@@ -1,4 +1,3 @@
 [Public]
-Object=(Name=LMSGameTikTok.LMSGame,Class=Class,MetaClass=Engine.GameInfo,Description="All vs Me (TikTok)|All bots hunt the human player. Bots don't respawn. Score your kills!")
-Object=(Name=LMSGameTikTok.MutRemoteControl,Class=Class,MetaClass=Engine.Mutator,Description="Remote Control (UDP) for LMSGame")
-
+Object=(Name=LMSGameTikTok.MutRemoteControl,Class=Class,MetaClass=Engine.Mutator,Description="05_Remote Control (UDP)")
+Object=(Name=LMSGameTikTok.LMSGame,Class=Class,MetaClass=Engine.GameInfo,Description="TikTok Team Survival")
