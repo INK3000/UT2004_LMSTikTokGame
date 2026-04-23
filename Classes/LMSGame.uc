@@ -271,7 +271,7 @@ defaultproperties
     GameName="TikTok Team Survival"
     Description="Streamer vs viewer bots (no respawn for bots)"
 
-    bScoreTeamKills=False
+    bScoreTeamKills=True
     bSpawnInTeamArea=True
     bBalanceTeams=False
 
